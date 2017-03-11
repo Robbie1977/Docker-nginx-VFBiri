@@ -1,4 +1,4 @@
-FROM appertly/nginx-rewrite
+FROM ngix
 
 COPY default.conf /etc/nginx/conf.d/default.conf
 
