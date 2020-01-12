@@ -4,6 +4,6 @@ services:
 script:
   - docker build -t test-image:test .
   - docker run -d --name test -p 8983:8983 -e VFB_OWL_VERSION=Current -e PDBserver=http://pdb.virtualflybrain.org test-image:test
-  - sleep 2m
+  - sleep 10m
   - docker logs test
   - curl -sSf "http://localhost:8983/solr/ontology/select?fl=short_form,label,synonym,id,type,has_narrow_synonym_annotation,has_broad_synonym_annotation&start=0&fq=type:class%20OR%20type:individual%20OR%20fq=type:property&fq=ontology_name:(vfb)&fq=shortform_autosuggest:VFB*%20OR%20shortform_autosuggest:FB*%20OR%20is_defining_ontology:true&rows=100&bq=is_obsolete:false%5E100.0%20shortform_autosuggest:VFB*%5E110.0%20shortform_autosuggest:FBbt*%5E100.0%20is_defining_ontology:true%5E100.0%20label_s:%22%22%5E2%20synonym_s:%22%22%20in_subset_annotation:BRAINNAME%5E3%20short_form:FBbt_00003982%5E2&q=Fly%20OR%20Fly*%20OR%20*Fly*&defType=edismax&qf=label%20synonym%20label_autosuggest_ws%20label_autosuggest_e%20label_autosuggest%20synonym_autosuggest_ws%20synonym_autosuggest_e%20synonym_autosuggest%20shortform_autosuggest%20has_narrow_synonym_annotation%20has_broad_synonym_annotation&wt=json&indent=true"
