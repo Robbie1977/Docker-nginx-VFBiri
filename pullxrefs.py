@@ -10,52 +10,37 @@ print(f"Initial number of lines in neuronbridge.map: {initial_lines}")
 
 vc = VfbConnect()
 
-# Query for exact matches
-exact_query = """
+# Query for matches
+query = """
 MATCH (a)-[r]->(b:Site {short_form:'neuronbridge'}) 
 WHERE exists(r.accession) 
 WITH * 
 ORDER BY r.accession Asc, a.short_form Desc 
-RETURN DISTINCT collect( '    rewrite ^/xref/' + b.short_form + '/' + r.accession + ' https://v2.virtualflybrain.org/reports/' + a.short_form + ' last;') as map
+RETURN DISTINCT collect({ 
+    accession: r.accession,
+    destination: a.short_form
+}) as map
 """
 
-# Get exact match results and count
-print("\nProcessing exact matches...")
-exact_results = vc.nc.commit_list([exact_query])[0]['data'][0]['row']
-print(f"Number of exact matches found in query: {len(exact_results[0])}")
+print("\nProcessing matches...")
+results = vc.nc.commit_list([query])[0]['data'][0]['row']
+print(f"Number of unique matches found in query: {len(results[0])}")
 
-# Generate mappings
 output = ""
+exact_count = 0
+wildcard_count = 0
 
-# Add exact matches first
-exact_added = 0
-for line in exact_results[0]:
-    if not line[1].replace(" ","%20") in output:
-        output += "\n" + "".join(line).replace(line[1], line[1].replace(" ","%20"))
-        exact_added += 1
-print(f"Number of unique exact matches added: {exact_added}")
-
-# Query for wildcard matches
-wildcard_query = """
-MATCH (a)-[r]->(b:Site {short_form:'neuronbridge'}) 
-WHERE exists(r.accession) 
-WITH * 
-ORDER BY r.accession Asc, a.short_form Desc 
-RETURN DISTINCT collect( '    rewrite ^/xref/' + b.short_form + '/(.*):' + r.accession + ' https://v2.virtualflybrain.org/reports/' + a.short_form + ' last;') as map
-"""
-
-# Get wildcard match results and count
-print("\nProcessing wildcard matches...")
-wildcard_results = vc.nc.commit_list([wildcard_query])[0]['data'][0]['row']
-print(f"Number of wildcard matches found in query: {len(wildcard_results[0])}")
-
-# Add wildcard matches
-wildcard_added = 0
-for line in wildcard_results[0]:
-    if not line[1].replace(" ","%20") in output:
-        output += "\n" + "".join(line).replace(line[1], line[1].replace(" ","%20"))
-        wildcard_added += 1
-print(f"Number of unique wildcard matches added: {wildcard_added}")
+# Process each unique accession-destination pair
+for entry in results[0]:
+    # Add exact match
+    exact_line = f"    rewrite ^/xref/neuronbridge/{entry['accession']} https://v2.virtualflybrain.org/reports/{entry['destination']} last;"
+    output += "\n" + exact_line
+    exact_count += 1
+    
+    # Add wildcard match
+    wildcard_line = f"    rewrite ^/xref/neuronbridge/(.*):/{entry['accession']} https://v2.virtualflybrain.org/reports/{entry['destination']} last;"
+    output += "\n" + wildcard_line
+    wildcard_count += 1
 
 # Write to file
 with open('neuronbridge.map', 'w') as the_file:
@@ -67,8 +52,14 @@ with open('neuronbridge.map', 'r') as file:
 
 print("\nSummary:")
 print(f"Initial lines in file: {initial_lines}")
-print(f"Exact matches found: {len(exact_results[0])}")
-print(f"Unique exact matches added: {exact_added}")
-print(f"Wildcard matches found: {len(wildcard_results[0])}")
-print(f"Unique wildcard matches added: {wildcard_added}")
+print(f"Unique matches found: {len(results[0])}")
+print(f"Exact match lines added: {exact_count}")
+print(f"Wildcard match lines added: {wildcard_count}")
 print(f"Final lines in file: {final_lines}")
+
+# Print a sample of the final content
+print("\nSample of final content (first 6 lines to show both patterns):")
+with open('neuronbridge.map', 'r') as file:
+    for i, line in enumerate(file):
+        if i < 6:
+            print(line.strip())
