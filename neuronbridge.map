@@ -1,5 +1,4 @@
-
-    rewrite ^/xref/neuronbridge/1001453586 https://v2.virtualflybrain.org/reports/VFB_jrchjv24 last;
+rewrite ^/xref/neuronbridge/1001453586 https://v2.virtualflybrain.org/reports/VFB_jrchjv24 last;
     rewrite ^/xref/neuronbridge/1002360103 https://v2.virtualflybrain.org/reports/VFB_jrchjsbw last;
     rewrite ^/xref/neuronbridge/1002507131 https://v2.virtualflybrain.org/reports/VFB_jrchk3az last;
     rewrite ^/xref/neuronbridge/1002507159 https://v2.virtualflybrain.org/reports/VFB_jrchjtkl last;
