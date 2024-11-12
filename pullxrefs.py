@@ -33,12 +33,12 @@ wildcard_count = 0
 # Process each unique accession-destination pair
 for entry in results[0]:
     # Add exact match
-    exact_line = f"    rewrite ^/xref/neuronbridge/{entry['accession']} https://v2.virtualflybrain.org/reports/{entry['destination']} last;"
+    exact_line = f'    rewrite "^/xref/neuronbridge/{entry["accession"]}" "https://v2.virtualflybrain.org/reports/{entry["destination"]}" last;'
     output += "\n" + exact_line
     exact_count += 1
     
     # Add wildcard match
-    wildcard_line = f"    rewrite ^/xref/neuronbridge/(.*):/{entry['accession']} https://v2.virtualflybrain.org/reports/{entry['destination']} last;"
+    wildcard_line = f'    rewrite "^/xref/neuronbridge/(.*):{entry["accession"]}" "https://v2.virtualflybrain.org/reports/{entry["destination"]}" last;'
     output += "\n" + wildcard_line
     wildcard_count += 1
 
