@@ -17,7 +17,7 @@ WHERE exists(r.accession)
 WITH * 
 ORDER BY r.accession Asc, a.short_form Desc 
 RETURN DISTINCT collect({ 
-    accession: r.accession,
+    accession: r.accession[0],
     destination: a.short_form
 }) as map
 """
