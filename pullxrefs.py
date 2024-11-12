@@ -10,10 +10,12 @@ print(f"Initial number of lines in neuronbridge.map: {initial_lines}")
 
 vc = VfbConnect()
 
-# Query for matches with non-empty accession filter
+# Query for matches with non-empty accession filter and excluding deprecated nodes
 query = """
 MATCH (a)-[r]->(b:Site {short_form:'neuronbridge'}) 
-WHERE exists(r.accession) AND r.accession[0] <> ''
+WHERE exists(r.accession) 
+AND r.accession[0] <> ''
+AND NOT a:Deprecated
 WITH * 
 ORDER BY r.accession Asc, a.short_form Desc 
 RETURN DISTINCT collect({ 
