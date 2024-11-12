@@ -10,10 +10,10 @@ print(f"Initial number of lines in neuronbridge.map: {initial_lines}")
 
 vc = VfbConnect()
 
-# Query for matches
+# Query for matches with non-empty accession filter
 query = """
 MATCH (a)-[r]->(b:Site {short_form:'neuronbridge'}) 
-WHERE exists(r.accession) 
+WHERE exists(r.accession) AND r.accession[0] <> ''
 WITH * 
 ORDER BY r.accession Asc, a.short_form Desc 
 RETURN DISTINCT collect({ 
@@ -32,6 +32,10 @@ wildcard_count = 0
 
 # Process each unique accession-destination pair
 for entry in results[0]:
+    # Skip if accession is empty
+    if not entry['accession']:
+        continue
+        
     # Add exact match
     exact_line = f'    rewrite "^/xref/neuronbridge/{entry["accession"]}" "https://v2.virtualflybrain.org/reports/{entry["destination"]}" last;'
     output += "\n" + exact_line
