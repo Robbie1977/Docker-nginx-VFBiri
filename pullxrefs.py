@@ -10,7 +10,6 @@ print(f"Initial number of lines in neuronbridge.map: {initial_lines}")
 
 vc = VfbConnect(neo_endpoint='http://kb.virtualflybrain.org', neo_credentials=('neo4j', 'vfb'))
 
-# Updated query to handle both accession formats
 query = """
 MATCH (a)-[r]->(b:Site {short_form:'neuronbridge'}) 
 WHERE exists(r.accession) 
@@ -40,7 +39,7 @@ exact_count = 0
 body_id_count = 0
 version_wildcard_count = 0
 
-# Process each unique accession-destination pair
+# First pass: Add exact matches and dataset pattern matches
 for entry in results[0]:
     if not entry['accession']:
         continue
@@ -52,16 +51,18 @@ for entry in results[0]:
     
     # If accession contains dataset_name (has colon)
     if ':' in entry['accession']:
-        # Add match for body_id only
-        body_id_line = f'    rewrite "^/xref/neuronbridge/{entry["body_id"]}" "https://v2.virtualflybrain.org/reports/{entry["destination"]}" last;'
-        output += "\n" + body_id_line
-        body_id_count += 1
-        
         # Add match for dataset_name:VERSION:body_id pattern
         dataset_name = entry['accession'].split(':')[0]
         version_wildcard_line = f'    rewrite "^/xref/neuronbridge/{dataset_name}:.*:{entry["body_id"]}" "https://v2.virtualflybrain.org/reports/{entry["destination"]}" last;'
         output += "\n" + version_wildcard_line
         version_wildcard_count += 1
+
+# Second pass: Add body_id only matches for entries with dataset_name
+for entry in results[0]:
+    if ':' in entry['accession']:
+        body_id_line = f'    rewrite "^/xref/neuronbridge/{entry["body_id"]}" "https://v2.virtualflybrain.org/reports/{entry["destination"]}" last;'
+        output += "\n" + body_id_line
+        body_id_count += 1
 
 # Write to file
 with open('neuronbridge.map', 'w') as the_file:
@@ -75,8 +76,8 @@ print("\nSummary:")
 print(f"Initial lines in file: {initial_lines}")
 print(f"Unique matches found: {len(results[0])}")
 print(f"Exact match lines added: {exact_count}")
-print(f"Body ID match lines added: {body_id_count}")
 print(f"Version wildcard match lines added: {version_wildcard_count}")
+print(f"Body ID match lines added: {body_id_count}")
 print(f"Final lines in file: {final_lines}")
 
 # Print a sample of the final content
