@@ -8,7 +8,7 @@ if os.path.exists('neuronbridge.map'):
         initial_lines = sum(1 for line in file)
 print(f"Initial number of lines in neuronbridge.map: {initial_lines}")
 
-vc = VfbConnect(endpoint='http://kb.virtualflybrain.org', usr='neo4j', pwd='vfb')
+vc = VfbConnect(neo_endpoint='http://kb.virtualflybrain.org', neo_credentials=('neo4j', 'vfb'))
 
 # Updated query to handle both accession formats
 query = """
