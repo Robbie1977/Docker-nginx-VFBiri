@@ -1,0 +1,104 @@
+name: Docker Image CI
+
+# Docker Hub's automated build stopped producing `latest` in March 2021, so
+# production has been running that 2021 image ever since -- a merge to master
+# reached nobody. This rebuilds and pushes on every branch, and proves the
+# routing still behaves before anything is published.
+
+on:
+  push:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Extract metadata
+      id: meta
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          TAG=${GITHUB_REF#refs/tags/}
+        else
+          TAG=${GITHUB_REF#refs/heads/}
+        fi
+        # A branch like feature/x is not a valid image tag; use feature-x.
+        TAG=${TAG//\//-}
+        # master is what Rancher pulls, and it pulls it as :latest.
+        if [[ $TAG == master ]]; then TAG=latest; fi
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "Image tag: $TAG"
+
+    - name: Build Docker image
+      run: docker build . --file Dockerfile --tag rcourt/docker-nginx-vfbiri:${{ steps.meta.outputs.tag }}
+
+    - name: Check the config parses
+      run: docker run --rm rcourt/docker-nginx-vfbiri:${{ steps.meta.outputs.tag }} nginx -t
+
+    # This container fronts /reports/, /site/, /data/ on every VFB hostname and
+    # the HTTP->HTTPS canonicalisation for v2, larval, rstudio and the CATMAID
+    # wildcard. The base image moves, so parsing is not enough: assert the
+    # redirects themselves, and refuse to publish an image that changes one.
+    - name: Assert routing behaviour is unchanged
+      run: |
+        docker run -d --name iri -p 8080:80 rcourt/docker-nginx-vfbiri:${{ steps.meta.outputs.tag }}
+        for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:8080/ -H 'Host: x' && break || sleep 1; done
+
+        fail=0
+        check() {   # check <host> <path> <expected-status> <expected-location>
+          got=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -H "Host: $1" "http://127.0.0.1:8080$2")
+          if [[ "$got" == "$3 $4" ]]; then
+            echo "  ok    $1$2 -> $got"
+          else
+            echo "  FAIL  $1$2"
+            echo "          expected: $3 $4"
+            echo "          got     : $got"
+            fail=1
+          fi
+        }
+
+        V=https://v2.virtualflybrain.org/org.geppetto.frontend/geppetto
+        check virtualflybrain.org /reports/VFB_jrchjrch                 302 "$V?id=VFB_jrchjrch"
+        check virtualflybrain.org /reports/VFB_00101384/thumbnail.png   302 https://www.virtualflybrain.org/data/VFB/c/0010/1384/thumbnail.png
+        check virtualflybrain.org /site/stacks/index.htm                302 "$V"
+        check virtualflybrain.org /site/vfb_site/faq.htm                302 "https://groups.google.com/forum/embed/?place=forum/vfb-suport#!forum/vfb-suport"
+        check virtualflybrain.org /data/FBbt_00003748                   302 "$V?id=FBbt_00003748"
+        check virtualflybrain.org /config/neo4j2owl-config.yaml         302 http://raw.githubusercontent.com/VirtualFlyBrain/vfb-prod/master/neo4j2owl-config.yaml
+        check v2.virtualflybrain.org      /            302 https://v2.virtualflybrain.org/
+        check www.virtualflybrain.org     /anything    302 https://v2.virtualflybrain.org/anything
+        check virtualflybrain.org         /anything    302 https://v2.virtualflybrain.org/anything
+        check larva.virtualflybrain.org   /            302 https://larval.virtualflybrain.org/
+        check rstudio.virtualflybrain.org /            302 https://rstudio.virtualflybrain.org/
+
+        # An unfurler must never be shown an error, whatever VFBquery is doing:
+        # either the preview (upstream up) or the ordinary redirect (upstream
+        # unreachable from this runner).
+        code=$(curl -s -o /tmp/unfurl.html -w '%{http_code}' -A 'Slackbot-LinkExpanding 1.0' \
+                    -H 'Host: virtualflybrain.org' http://127.0.0.1:8080/reports/VFB_jrchjrch)
+        case "$code" in
+          200) grep -q 'og:image' /tmp/unfurl.html \
+                 && echo "  ok    unfurler -> preview page with og:image" \
+                 || { echo "  FAIL  unfurler got 200 without og:image"; fail=1; } ;;
+          302) echo "  ok    unfurler -> fallback redirect (upstream unreachable)" ;;
+          *)   echo "  FAIL  unfurler got $code (must be 200 or 302, never an error)"; fail=1 ;;
+        esac
+
+        docker logs iri 2>&1 | tail -20
+        docker rm -f iri >/dev/null
+        exit $fail
+
+    - name: Login to Docker Hub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_HUB_USER }}
+        password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+    - name: Push Docker image
+      if: github.event_name != 'pull_request'
+      run: docker push rcourt/docker-nginx-vfbiri:${{ steps.meta.outputs.tag }}
