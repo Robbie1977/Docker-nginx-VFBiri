@@ -50,8 +50,11 @@ jobs:
         for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:8080/ -H 'Host: x' && break || sleep 1; done
 
         fail=0
+        BROWSER_UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
         check() {   # check <host> <path> <expected-status> <expected-location>
-          got=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -H "Host: $1" "http://127.0.0.1:8080$2")
+          # Sent as a real browser: the /reports/ preview split only applies
+          # to non-browser traffic, and a default curl UA now counts as that.
+          got=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -A "$BROWSER_UA" -H "Host: $1" "http://127.0.0.1:8080$2")
           if [[ "$got" == "$3 $4" ]]; then
             echo "  ok    $1$2 -> $got"
           else
@@ -101,6 +104,55 @@ jobs:
           302) echo "  ok    unfurler -> fallback redirect (upstream unreachable)" ;;
           *)   echo "  FAIL  unfurler got $code (must be 200 or 302, never an error)"; fail=1 ;;
         esac
+
+        # The routing split is now "real browser or Googlebot -> plain
+        # redirect, everything else -> preview (or its fallback redirect)".
+        # Assert both sides so a UA classified the wrong way is caught here
+        # rather than in production. Named after what tripped this up:
+        # Meta renamed its unfurler UA (facebookexternalhit -> meta-external-
+        # agent) without VFB noticing, and several bots (Amazonbot,
+        # Reflectionbot) spoof a full Chrome/Safari tail that a naive
+        # browser-pattern match would wrongly treat as a real browser.
+        expect_route() {   # expect_route <label> <user-agent> <preview|redirect>
+          label=$1; ua=$2; want=$3
+          got=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -A "$ua" \
+                     -H 'Host: virtualflybrain.org' http://127.0.0.1:8080/reports/VFB_jrchjrch)
+          code=${got%% *}
+          case "$want:$code" in
+            preview:200|preview:302)   echo "  ok    $label -> preview ($code)" ;;
+            redirect:302)
+              if [[ "$got" == "302 $V?id=VFB_jrchjrch" ]]; then
+                echo "  ok    $label -> plain redirect"
+              else
+                echo "  FAIL  $label -> 302 but to the wrong place: $got"; fail=1
+              fi ;;
+            *) echo "  FAIL  $label -> $got (wanted $want)"; fail=1 ;;
+          esac
+        }
+
+        # Real browsers and Googlebot: unchanged plain redirect.
+        expect_route 'Chrome desktop'   "$BROWSER_UA" redirect
+        expect_route 'Firefox desktop'  'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0' redirect
+        expect_route 'Safari desktop'   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15' redirect
+        expect_route 'Mobile Safari'    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' redirect
+        expect_route 'Edge desktop'     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0' redirect
+        expect_route 'Googlebot'        'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' redirect
+
+        # Everything else: preview (or its fallback redirect, never the plain
+        # one, and never an error).
+        expect_route 'Facebook (meta-externalagent, spoofed Chrome tail)' \
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 (compatible; meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/crawler))' preview
+        expect_route 'Amazonbot (spoofed Chrome tail)' \
+          'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Amazonbot/0.1; +https://developer.amazon.com/support/amazonbot) Chrome/119.0.6045.214 Safari/537.36' preview
+        expect_route 'Reflectionbot (spoofed Chrome tail)' \
+          'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Reflectionbot/1.0; +https://reflection.ai/bot) Chrome/151.0.0.0 Safari/537.36' preview
+        expect_route 'SemrushBot' \
+          'Mozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)' preview
+        expect_route 'Slackbot (already-known unfurler)' \
+          'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)' preview
+        expect_route 'bare curl, no spoofing' 'curl/8.5.0' preview
+        expect_route 'unrecognised tool UA' 'MyResearchTool/1.0' preview
+        expect_route 'no user-agent header at all' '' preview
 
         docker logs iri 2>&1 | tail -20
         docker rm -f iri >/dev/null
