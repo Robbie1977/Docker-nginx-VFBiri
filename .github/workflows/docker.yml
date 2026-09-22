@@ -78,6 +78,20 @@ jobs:
         # An unfurler must never be shown an error, whatever VFBquery is doing:
         # either the preview (upstream up) or the ordinary redirect (upstream
         # unreachable from this runner).
+        # Every id family VFBquery resolves must reach the preview route, not
+        # just the underscored ones: FlyBase ids and dataset names carry no
+        # underscore, and requiring one denied them a preview entirely.
+        for id in VFB_jrchjrch FBbt_00003748 FBgn0038978 FBtp0106402 Court2017; do
+          got=$(curl -s -o /dev/null -w '%{http_code}' -A 'Slackbot-LinkExpanding 1.0' \
+                     -H 'Host: virtualflybrain.org' "http://127.0.0.1:8080/reports/$id")
+          # 200 when the upstream is reachable, 302 when it is not; never an error.
+          if [[ "$got" == 200 || "$got" == 302 ]]; then
+            echo "  ok    unfurler /reports/$id -> $got"
+          else
+            echo "  FAIL  unfurler /reports/$id -> $got (must be 200 or 302)"; fail=1
+          fi
+        done
+
         code=$(curl -s -o /tmp/unfurl.html -w '%{http_code}' -A 'Slackbot-LinkExpanding 1.0' \
                     -H 'Host: virtualflybrain.org' http://127.0.0.1:8080/reports/VFB_jrchjrch)
         case "$code" in
